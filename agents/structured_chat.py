@@ -1,12 +1,7 @@
 import re
-from typing import Any, List, Optional, Sequence, Tuple
-
-from pydantic import BaseModel
-from agents.agent import BaseSingleActionAgent
-from agents.callback_manager import CallbackManager
-from agents.schema import AgentAction, BaseTool, PlanOutputParser
+from typing import List, Optional, Sequence, Tuple
+from agents.schema import AgentAction, BaseTool, Callbacks, PlanOutputParser
 from models.chat_model import ChatModel
-from langchain.prompts import ChatPromptTemplate
 
 
 PREFIX = """Respond to the human as helpfully and accurately as possible. You have access to the following tools:"""
@@ -67,13 +62,11 @@ class StructuredChatAgent(object):
               f"you return as final answer):\n{agent_scratchpad}"
           )
 
-    @property
     def _stop(self) -> List[str]:
         return ["Observation:"]
 
-    @classmethod
-    def create_prompt(
-        cls,
+    def create_prompt_template(
+        self,
         tools: Sequence[BaseTool],
         prefix: str = PREFIX,
         suffix: str = SUFFIX
@@ -102,39 +95,18 @@ class StructuredChatAgent(object):
 
         return format_message
 
-    @classmethod
     def from_llm_and_tools(
-        cls,
+        self,
         model: ChatModel,
         tools: Sequence[BaseTool],
         output_parser: Optional[PlanOutputParser] = None,
-        prefix: str = PREFIX,
-        suffix: str = SUFFIX,
-        input_variables: Optional[List[str]] = None,
-        **kwargs: Any,
+        callbacks: Callbacks = None
     ):
         """Construct an agent from an LLM and tools."""
-        cls._validate_tools(tools)
-        prompt = cls.create_prompt(
-            tools,
-            prefix=prefix,
-            suffix=suffix
-        )
-        messages = prompt(input_variables)
-        llm_chain = LLMChain(
-            llm=llm,
-            prompt=prompt,
-            callback_manager=callback_manager,
-        )
-        tool_names = [tool.name for tool in tools]
-        _output_parser = output_parser or cls._get_default_output_parser(llm=llm)
-        return cls(
-            llm_chain=llm_chain,
-            allowed_tools=tool_names,
-            output_parser=_output_parser,
-            **kwargs,
-        )
+        prompt_template = self.create_prompt_template(tools)
 
-    @property
-    def _agent_type(self) -> str:
-        raise ValueError("This should be implemented by subclasses.")
+        def exec(input_variables: Optional[List[str]] = None):
+            messages = prompt_template(input_variables)
+            response = model(messages, callbacks=callbacks)
+            return output_parser.parse(response)
+        return exec
