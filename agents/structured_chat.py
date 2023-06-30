@@ -1,7 +1,8 @@
 import re
-from typing import List, Optional, Sequence, Tuple
-from agents.schema import AgentAction, BaseTool, Callbacks, PlanOutputParser
+import json
 from models.chat_model import ChatModel
+from prompts.chart_prompt_template import ChatPromptTemplate
+from utils import dotdict, plog
 
 
 PREFIX = """Respond to the human as helpfully and accurately as possible. You have access to the following tools:"""
@@ -44,69 +45,171 @@ HUMAN_MESSAGE_TEMPLATE = "{input}\n\n{agent_scratchpad}"
 
 
 class StructuredChatAgent(object):
-    def __init__(self, **kwargs):
-        self.observation_prefix = kwargs.get('observation_prefix', "Observation: ")
+    def __init__(self, tools, stop=['Observation:'], max_iterations=15, **kwargs):
+        self.model = ChatModel()
+        self._stop = stop
+        self.name_to_tool_map = self._re_tools(tools)
+        self.prompt = self.create_prompt(tools)
+        self.max_iterations = max_iterations
+        self.observation_prefix = kwargs.get(
+            'observation_prefix', "Observation: ")
         self.llm_prefix = kwargs.get('llm_prefix', "Thought:")
+        self.verbose = kwargs.get('verbose', False)
+        self.show_prompt = kwargs.get('show_prompt', False)
 
-    def _init_construct_scratchpad(self, intermediate_steps):
-      thoughts = ""
-      for action, observation in intermediate_steps:
-          thoughts += action.log
-          thoughts += f"\n{self.observation_prefix}{observation}\n{self.llm_prefix}"
-
-    def _construct_scratchpad(self, intermediate_steps: List[Tuple[AgentAction, str]]) -> str:
-        agent_scratchpad = self._init_construct_scratchpad(intermediate_steps)
-        return (
-              f"This was your previous work "
-              f"(but I haven't seen any of it! I only see what "
-              f"you return as final answer):\n{agent_scratchpad}"
-          )
-
-    def _stop(self) -> List[str]:
-        return ["Observation:"]
-
-    def create_prompt_template(
+    def create_prompt(
         self,
-        tools: Sequence[BaseTool],
+        tools,
         prefix: str = PREFIX,
-        suffix: str = SUFFIX
+        suffix: str = SUFFIX,
+        human_message_template: str = HUMAN_MESSAGE_TEMPLATE,
+        format_instructions: str = FORMAT_INSTRUCTIONS,
+        input_variables=None
     ):
-        human_message_template: str = HUMAN_MESSAGE_TEMPLATE
-        format_instructions: str = FORMAT_INSTRUCTIONS
-
         tool_strings = []
         for tool in tools:
-            args_schema = re.sub("}", "}}}}", re.sub("{", "{{{{", str(tool.args)))
-            tool_strings.append(f"{tool.name}: {tool.description}, args: {args_schema}")
-
+            args_schema = re.sub(
+                "}", "}}}}", re.sub("{", "{{{{", str(tool.args)))
+            tool_strings.append(
+                f"{tool.name}: {tool.description}, args: {args_schema}")
         formatted_tools = "\n".join(tool_strings)
-
         tool_names = ", ".join([tool.name for tool in tools])
         format_instructions = format_instructions.format(tool_names=tool_names)
-        template = "\n\n".join([prefix, formatted_tools, format_instructions, suffix])
+        template = "\n\n".join(
+            [prefix, formatted_tools, format_instructions, suffix])
+        if input_variables is None:
+            input_variables = ["input", "agent_scratchpad"]
 
-        def format_message(input_variables):
-            human_message = human_message_template.format(**input_variables)
-            messages = [
-                { 'role': 'system', 'content': template },
-                { 'role': 'user', 'content': human_message },
-            ]
-            return messages
+        messages = [{
+            "role": "system",
+            "template": template,
+        }, {
+            "role": "user",
+            "template": human_message_template
+        }]
 
-        return format_message
+        prompt = ChatPromptTemplate(input_variables, messages)
+        return prompt
 
-    def from_llm_and_tools(
-        self,
-        model: ChatModel,
-        tools: Sequence[BaseTool],
-        output_parser: Optional[PlanOutputParser] = None,
-        callbacks: Callbacks = None
-    ):
-        """Construct an agent from an LLM and tools."""
-        prompt_template = self.create_prompt_template(tools)
+    def _re_tools(self, tools):
+        name_to_tool_map = {}
+        for tool in tools:
+            name_to_tool_map[tool.name] = tool
+        return name_to_tool_map
 
-        def exec(input_variables: Optional[List[str]] = None):
-            messages = prompt_template(input_variables)
-            response = model(messages, callbacks=callbacks)
-            return output_parser.parse(response)
-        return exec
+    def _construct_scratchpad(self, intermediate_steps):
+        thoughts = ""
+        for action, observation in intermediate_steps:
+            thoughts += action.log
+            thoughts += f"\n{self.observation_prefix}{observation}\n{self.llm_prefix}"
+        if thoughts:
+            return (
+                f"This was your previous work "
+                f"(but I haven't seen any of it! I only see what "
+                f"you return as final answer):\n{thoughts}"
+            )
+        else:
+            return thoughts
+
+    def _output_parse(self, text):
+        try:
+            action_match = re.search(r"```(.*?)```?", text, re.DOTALL)
+            if action_match is not None:
+                response = json.loads(
+                    action_match.group(1).strip().replace('json\n', '\n'), strict=False)
+                if isinstance(response, list):
+                    # gpt turbo frequently ignores the directive to emit a single action
+                    response = response[0]
+                return dotdict({
+                    "type": "action",
+                    "tool": response["action"],
+                    "tool_input": response.get("action_input", {}),
+                    "state" : 'finished' if response["action"] == 'Final Answer' else 'intermediate',
+                    "output": response.get("action_input", {}),
+                    "log": text
+                })
+            else:
+                return dotdict({
+                    "type": "action",
+                    "state": "finished",
+                    "output": text,
+                    "log": text
+                })
+        except Exception as e:
+            raise Exception(f"Could not parse LLM output: {text}") from e
+
+    def get_full_inputs(self, intermediate_steps, **kwargs):
+        """Create the full inputs for the llm from intermediate steps."""
+        thoughts = self._construct_scratchpad(intermediate_steps)
+        new_inputs = {"agent_scratchpad": thoughts, "stop": self._stop}
+        full_inputs = {**kwargs, **new_inputs}
+        return full_inputs
+
+    def prep_prompts(self, input_list):
+        """Prepare prompts from inputs."""
+        stop = None
+        if "stop" in input_list[0]:
+            stop = input_list[0]["stop"]
+        prompts = []
+        for inputs in input_list:
+            selected_inputs = {k: inputs[k]
+                               for k in self.prompt.input_variables}
+            prompt = self.prompt.format(**selected_inputs)
+            prompts.append(prompt)
+
+        return prompts, stop
+
+    def _track_steps_verbose(self, step_output):
+         if self.verbose:
+                if 'input' in step_output:
+                    plog(f"> Start: \n{step_output['input']}\n", 'bold')   
+                else:
+                    action, observation = step_output
+                    though = action.log
+                    if not though.startswith(self.llm_prefix):
+                        though = f"{self.llm_prefix}{though}"
+                    plog(f"{though}", 'green')
+                    plog(f"{self.observation_prefix}{observation}\n", 'blue')
+                    if action.tool == 'Final Answer':
+                        plog(f"> Finished: \n{observation}\n", 'bold')
+
+    def run(self, **kwargs):
+        intermediate_steps = []
+        iterations = 0
+        self._track_steps_verbose(kwargs)
+        while iterations <= self.max_iterations:
+            next_step_outputs = self._take_next_step(intermediate_steps, kwargs)
+            next_step_output = next_step_outputs[0]
+            self._track_steps_verbose(next_step_output)
+            if (next_step_output[0].state == 'finished'):
+                return next_step_output[1]
+
+            intermediate_steps.extend(next_step_outputs)
+            iterations += 1
+
+    def _take_next_step(self, intermediate_steps, inputs):
+        full_inputs = self.get_full_inputs(intermediate_steps, **inputs)
+
+        prompts, stop = self.prep_prompts([full_inputs])
+
+        if self.show_prompt:
+            messages = [message['content'] for message in prompts[0]]
+            print("\n".join(messages))
+
+        response = self.model(messages=prompts[0], stop=stop)
+        output = self._output_parse(response)
+
+        if (output.state == 'finished'):
+            return [(output, output.output)]
+        actions = []
+        if (output.tool is not None):
+            actions = [output]
+        else:
+            actions = output
+        result = []
+        for action in actions:
+            if action.tool in self.name_to_tool_map:
+                tool = self.name_to_tool_map[action.tool]
+                observation = tool.run(action.tool_input)
+                result.append((action, observation))
+        return result
