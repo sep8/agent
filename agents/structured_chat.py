@@ -55,7 +55,7 @@ class StructuredChatAgent(object):
             'observation_prefix', "Observation: ")
         self.llm_prefix = kwargs.get('llm_prefix', "Thought:")
         self.verbose = kwargs.get('verbose', False)
-        self.show_prompt = kwargs.get('show_prompt', False)
+        self.print_prompt = kwargs.get('print_prompt', False)
 
     def create_prompt(
         self,
@@ -101,14 +101,19 @@ class StructuredChatAgent(object):
         for action, observation in intermediate_steps:
             thoughts += action.log
             thoughts += f"\n{self.observation_prefix}{observation}\n{self.llm_prefix}"
-        if thoughts:
+        
+        agent_scratchpad = thoughts
+        if not isinstance(agent_scratchpad, str):
+            raise ValueError("agent_scratchpad should be of type string.")
+
+        if agent_scratchpad:
             return (
                 f"This was your previous work "
                 f"(but I haven't seen any of it! I only see what "
-                f"you return as final answer):\n{thoughts}"
+                f"you return as final answer):\n{agent_scratchpad}"
             )
         else:
-            return thoughts
+            return agent_scratchpad
 
     def _output_parse(self, text):
         try:
@@ -191,9 +196,10 @@ class StructuredChatAgent(object):
 
         prompts, stop = self.prep_prompts([full_inputs])
 
-        if self.show_prompt:
+        if self.print_prompt == True:
             messages = [message['content'] for message in prompts[0]]
             print("\n".join(messages))
+            print('---'*10)
 
         response = self.model(messages=prompts[0], stop=stop)
         output = self._output_parse(response)
