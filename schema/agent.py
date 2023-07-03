@@ -17,7 +17,7 @@ from typing import (
 )
 from uuid import UUID
 
-from agents.serializable import Serializable
+from schema.serializable import Serializable
 
 
 Callbacks = Optional[Union[List[Any], Any]]

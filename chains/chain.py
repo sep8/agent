@@ -1,8 +1,9 @@
 
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 from callback.base import CallbackHandler
 from models.chat_model import ChatModel
 from schema.agent import NoOpOutputParser
+from utils.dotdict import dotdict
 
 default_callback = CallbackHandler()
 
@@ -70,24 +71,28 @@ class Chain(object):
                     overall_token_usage[k] = v
         return {"token_usage": overall_token_usage, "model_name": self.llm.model_name}
 
-    def create_outputs(self, responses: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Create outputs from response."""
-        generations = [
+    def _create_llm_result(self, response: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Create llm result from response."""
+        llm_output = self._combine_llm_outputs([res['llm_output'] for res in response])
+        generations = [res['generations'] for res in response]
+        llm_result = {"llm_output": llm_output, "generations": generations}
+        return llm_result
+    
+    def create_outputs(self, response: List[Dict[str, Any]]):
+        llm_result = self._create_llm_result(response)
+        result = [
             # Get the text of the top generated string.
             {
-                self.output_key: self.output_parser.parse_result(generation),
+                self.output_key: self.output_parser.parse_result([dotdict({self.output_key: generation})]),
                 "full_generation": generation,
             }
-            for generation in responses.generations
+            for generation in llm_result['generations']
         ]
         if self.return_final_only:
-            generations = [{self.output_key: r[self.output_key]} for r in generations]
+            result = [{self.output_key: r[self.output_key]} for r in result]
+        return result
 
-        llm_output = self._combine_llm_outputs(results)
-        generations = [res.generations for res in results]
-        output = LLMResult(generations=generations, llm_output=llm_output)
     
-
     def __call__(self, inputs):
         inputs = self.prep_inputs(inputs)
         responses = self.generate([inputs])
