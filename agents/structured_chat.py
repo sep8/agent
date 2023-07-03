@@ -48,7 +48,7 @@ class StructuredChatAgent(object):
     def __init__(self, tools, stop=['Observation:'], max_iterations=15, **kwargs):
         self.model = ChatModel()
         self._stop = stop
-        self.name_to_tool_map = self._re_tools(tools)
+        self.name_to_tool_map = self._register_tools(tools)
         self.prompt = self.create_prompt(tools)
         self.max_iterations = max_iterations
         self.observation_prefix = kwargs.get(
@@ -90,7 +90,7 @@ class StructuredChatAgent(object):
         prompt = ChatPromptTemplate(input_variables, messages)
         return prompt
 
-    def _re_tools(self, tools):
+    def _register_tools(self, tools):
         name_to_tool_map = {}
         for tool in tools:
             name_to_tool_map[tool.name] = tool
@@ -193,12 +193,11 @@ class StructuredChatAgent(object):
 
     def _take_next_step(self, intermediate_steps, inputs):
         full_inputs = self.get_full_inputs(intermediate_steps, **inputs)
-
         prompts, stop = self.prep_prompts([full_inputs])
 
         if self.print_prompt == True:
             messages = [message['content'] for message in prompts[0]]
-            print("\n".join(messages))
+            print(messages[1])
             print('---'*10)
 
         response = self.model(messages=prompts[0], stop=stop)

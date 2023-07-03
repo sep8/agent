@@ -1,28 +1,34 @@
 
+from typing import Any, Dict, Mapping
 import openai
 
 def default_callback(response):
     return response['choices'][0]['message']['content'].strip()
 
 class ChatModel(object):
-    def __init__(self, model='gpt-3.5-turbo', temperature=0, **kwargs):
-        self.model = model
-        self.temperature = temperature
-        self.max_tokens = kwargs.get('max_tokens', 2000)
+    def __init__(self, model_name='gpt-3.5-turbo', temperature=0, **kwargs):
+        self.model_name = model_name
+        self.temperature = kwargs.get('temperature', 0.0)
+        self.max_tokens = kwargs.get('max_tokens', None)
         self.top_p = kwargs.get('top_p', 1.0)
         self.n = kwargs.get('n', 1)
+        
+    def _create_chat_result(self, response: Mapping[str, Any]) -> Dict[str, Any]:
+        generations = []
+        for res in response["choices"]:
+            message = res["message"]
+            content = message['content'] or ""
+            generations.append(content)
+        llm_output = {"token_usage": response["usage"], "generations": generations, 'model_name': self.model_name}
+        return llm_output
 
-    def __call__(self, messages, stop, callbacks = None):
+    def __call__(self, messages, stop):
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+            model=self.model_name,
             messages=messages,
-            temperature=0.0,
-            max_tokens=None,
-            n=1,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            n=self.n,
             stop=stop
         )
-        response = response['choices'][0]['message']['content'].strip()
-        if (callbacks is not None):
-            for callback in self.callbacks:
-                response = callback(response)
-        return response
+        return self._create_chat_result(response)
