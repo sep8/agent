@@ -1,32 +1,20 @@
 
-from typing import Any, Dict, List
-from agents.planner_executors.planner import BasePlanner
-from agents.planner_executors.executors import BaseExecutor
-from pydantic import BaseModel, Field
-
-from agents.schema import BaseStepContainer, ListStepContainer
+from typing import Any, Dict
+from agents.planner_executors.schema import ListStepContainer
 
 
-class PlanAndExecute(BaseModel):
-    planner: BasePlanner
-    executor: BaseExecutor
-    step_container: BaseStepContainer = Field(default_factory=ListStepContainer)
-    input_key: str = "input"
-    output_key: str = "output"
-    verbose: bool = False
 
-    @property
-    def input_keys(self) -> List[str]:
-        return [self.input_key]
+class PlanAndExecute(object):
+    def __init__(self, **kwargs) -> None:
+        self.planner = kwargs.get('planner')
+        self.executor = kwargs.get('executor')
+        self.step_container = ListStepContainer()
+        self.input_key: str = "input"
+        self.output_key: str = "output"
+        self.input_keys = [self.input_key]
+        self.output_keys = [self.output_key]
 
-    @property
-    def output_keys(self) -> List[str]:
-        return [self.output_key]
-
-    def _call(
-        self,
-        inputs: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def run(self, inputs: Dict[str, Any]) -> Any:
         plan = self.planner.plan(inputs)
         for step in plan.steps:
             _new_inputs = {
@@ -35,11 +23,8 @@ class PlanAndExecute(BaseModel):
                 "objective": inputs[self.input_key],
             }
             new_inputs = {**_new_inputs, **inputs}
-            response = self.executor.step(
-                new_inputs
-            )
-            if self.verbose is True:
-                print(f"*****\n\nStep: {step.value}")
-                print(f"\n\nResponse: {response.response}")
+            response = self.executor.step(new_inputs)
             self.step_container.add_step(step, response)
+            print(f"*****\n\nStep: {step.value}")
+            print(f"\n\nResponse: {response.response}")
         return {self.output_key: self.step_container.get_final_response()}

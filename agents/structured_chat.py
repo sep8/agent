@@ -1,5 +1,6 @@
 import re
 import json
+from chains.chain import Chain
 from models.chat_model import ChatModel
 from prompts.chart_prompt_template import ChatPromptTemplate
 from utils import dotdict, plog
@@ -45,25 +46,32 @@ HUMAN_MESSAGE_TEMPLATE = "{input}\n\n{agent_scratchpad}"
 
 
 class StructuredChatAgent(object):
-    def __init__(self, tools, stop=['Observation:'], max_iterations=15, **kwargs):
-        self.model = ChatModel()
+    def __init__(self, stop=['Observation:'], max_iterations=15, **kwargs):
         self._stop = stop
+        tools = kwargs.get('tools')
         self.name_to_tool_map = self._register_tools(tools)
-        self.prompt = self.create_prompt(tools)
+        self.verbose = kwargs.get('verbose', False)
+
+        human_message_template = kwargs.get('human_message_template', HUMAN_MESSAGE_TEMPLATE)
+        format_instructions = FORMAT_INSTRUCTIONS
+        input_variables = kwargs.get('input_variables', None)
+        prompt = self.create_prompt(tools, PREFIX, SUFFIX, human_message_template, format_instructions, input_variables)
+        
+        print_prompt = kwargs.get('print_prompt', False)
+        self.chain = Chain(prompt=prompt, stop=stop, verbose=self.verbose, print_prompt=print_prompt)
+
         self.max_iterations = max_iterations
         self.observation_prefix = kwargs.get(
             'observation_prefix', "Observation: ")
         self.llm_prefix = kwargs.get('llm_prefix', "Thought:")
-        self.verbose = kwargs.get('verbose', False)
-        self.print_prompt = kwargs.get('print_prompt', False)
 
     def create_prompt(
         self,
         tools,
-        prefix: str = PREFIX,
-        suffix: str = SUFFIX,
-        human_message_template: str = HUMAN_MESSAGE_TEMPLATE,
-        format_instructions: str = FORMAT_INSTRUCTIONS,
+        prefix: str,
+        suffix: str,
+        human_message_template: str,
+        format_instructions: str,
         input_variables=None
     ):
         tool_strings = []
@@ -149,20 +157,6 @@ class StructuredChatAgent(object):
         full_inputs = {**kwargs, **new_inputs}
         return full_inputs
 
-    def prep_prompts(self, input_list):
-        """Prepare prompts from inputs."""
-        stop = None
-        if "stop" in input_list[0]:
-            stop = input_list[0]["stop"]
-        prompts = []
-        for inputs in input_list:
-            selected_inputs = {k: inputs[k]
-                               for k in self.prompt.input_variables}
-            prompt = self.prompt.format(**selected_inputs)
-            prompts.append(prompt)
-
-        return prompts, stop
-
     def _track_steps_verbose(self, step_output):
          if self.verbose:
                 if 'input' in step_output:
@@ -193,14 +187,7 @@ class StructuredChatAgent(object):
 
     def _take_next_step(self, intermediate_steps, inputs):
         full_inputs = self.get_full_inputs(intermediate_steps, **inputs)
-        prompts, stop = self.prep_prompts([full_inputs])
-
-        if self.print_prompt == True:
-            messages = [message['content'] for message in prompts[0]]
-            print(messages[1])
-            print('---'*10)
-
-        response = self.model(messages=prompts[0], stop=stop)
+        response = self.chain.run(full_inputs)
         output = self._output_parse(response)
 
         if (output.state == 'finished'):

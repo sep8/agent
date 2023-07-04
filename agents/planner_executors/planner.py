@@ -26,10 +26,10 @@ class PlanningOutputParser(PlanOutputParser):
 class Planner(object):
     def __init__(self, **kwargs):
         prompt = self.create_prompt()
-        verbose = kwargs.get('verbose', False)
+        self.verbose = kwargs.get('verbose', False)
         callback = kwargs.get('callback', None)
 
-        self.chain = Chain(prompt=prompt, stop=["<END_OF_PLAN>"], callback = callback, verbose=verbose)
+        self.chain = Chain(prompt=prompt, stop=["<END_OF_PLAN>"], callback = callback, verbose=self.verbose)
         self.output_parser = kwargs.get('output_parser', PlanningOutputParser())
 
     def create_prompt(self, system_prompt: str = SYSTEM_PROMPT,human_message_template: str = HUMAN_MESSAGE_TEMPLATE):
@@ -41,5 +41,7 @@ class Planner(object):
 
     def plan(self, inputs: dict) -> Plan:
         """Given input, decide what to do."""
-        response = self.chain(inputs)
-        return self.output_parser.parse(response)
+        output = self.chain.run(inputs)
+        if(self.verbose):
+            print("Planner output: ", output)
+        return self.output_parser.parse(output)

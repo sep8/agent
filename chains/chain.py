@@ -21,6 +21,7 @@ class Chain(object):
 
         self.return_final_only = kwargs.get('return_final_only', True)
         self.callback = kwargs.get('callback') or default_callback
+        self.print_prompt = kwargs.get('print_prompt', False)
 
     def _validate_inputs(self, inputs: Dict[str, Any]) -> None:
         """Check that all inputs are present."""
@@ -91,8 +92,8 @@ class Chain(object):
     ) -> Dict[str, str]:
         """Validate and prep outputs."""
         self._validate_outputs(outputs)
-        if self.memory is not None:
-            self.memory.save_context(inputs, outputs)
+        # if self.memory is not None:
+        #     self.memory.save_context(inputs, outputs)
         if return_only_outputs:
             return outputs
         else:
@@ -122,12 +123,20 @@ class Chain(object):
         )
         return final_outputs
 
+    def run(self, inputs):
+        outputs = self.__call__(inputs)
+        return outputs[self.output_key]
+
     def generate(
         self,
         input_list: List[Dict[str, Any]],
         **kwargs: Any,
     ):
         prompts, stop = self.prep_prompts(input_list)
+        if self.print_prompt == True:
+            messages = [message['content'] for message in prompts[0]]
+            print(messages[1])
+            print('---'*10+'END'+'---'*10)
         results = []
         for messages in prompts:
             try:

@@ -1,9 +1,5 @@
-
-from abc import abstractmethod
-from typing import Any, List
-from pydantic import BaseModel
-from agents.schema import BaseTool, Callbacks, StepResponse
-from models.chat_model import ChatModel
+from agents.planner_executors.schema import StepResponse
+from agents.structured_chat import StructuredChatAgent
 
 HUMAN_MESSAGE_TEMPLATE = """Previous steps: {previous_steps}
 
@@ -15,25 +11,32 @@ TASK_PREFIX = """{objective}
 
 """
 
-class BaseExecutor(BaseModel):
-    @abstractmethod
+
+class Executor(object):
+    def __init__(self, **kwargs):
+        template = HUMAN_MESSAGE_TEMPLATE
+        input_variables = ["previous_steps",
+                           "current_step", "agent_scratchpad"]
+
+        include_task_in_prompt = kwargs.get('include_task_in_prompt', False)
+        if include_task_in_prompt:
+            input_variables.append("objective")
+            template = TASK_PREFIX + template
+
+        verbose = kwargs.get('verbose', False)
+        tools = kwargs.get('tools')
+        print_prompt = kwargs.get('print_prompt', False)
+        self.agent = StructuredChatAgent(
+            tools=tools,
+            human_message_template=template,
+            input_variables=input_variables,
+            verbose=verbose,
+            print_prompt=print_prompt
+        )
+
     def step(
-        self, inputs: dict, callbacks: Callbacks = None, **kwargs: Any
+        self, inputs: dict
     ) -> StepResponse:
         """Take step."""
-
-
-class Executor(BaseExecutor):
-    model: ChatModel
-    tools: List[BaseTool]
-    input_variables = ["previous_steps", "current_step", "agent_scratchpad"]
-    template = HUMAN_MESSAGE_TEMPLATE
-
-    def step(
-        self, inputs: dict, callbacks: Callbacks = None, **kwargs: Any
-    ) -> StepResponse:
-        """Take step."""
-        input = inputs["input"]
-        messages = [{"role": "user", "content": input}]
-        response = self.model(messages, callbacks=callbacks)
+        response = self.agent.run(**inputs)
         return StepResponse(response=response)
