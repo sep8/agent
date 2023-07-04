@@ -1,6 +1,6 @@
 
 import re
-from schema.agent import Plan, PlanOutputParser, Callbacks, Step
+from agents.planner_executors.schema import Plan, PlanOutputParser, Step
 from chains.chain import Chain
 from prompts.chart_prompt_template import ChatPromptTemplate
 

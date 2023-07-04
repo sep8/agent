@@ -1,7 +1,27 @@
 
 from typing import Any, Dict, Mapping
 import openai
+from schema.messages import AIMessage, BaseMessage, ChatMessage, FunctionMessage, HumanMessage, SystemMessage
+from schema.output import ChatGeneration, ChatResult
 
+
+def _convert_dict_to_message(_dict: Mapping[str, Any]) -> BaseMessage:
+    role = _dict["role"]
+    if role == "user":
+        return HumanMessage(content=_dict["content"])
+    elif role == "assistant":
+        content = _dict["content"] or ""  # OpenAI returns None for tool invocations
+        if _dict.get("function_call"):
+            additional_kwargs = {"function_call": dict(_dict["function_call"])}
+        else:
+            additional_kwargs = {}
+        return AIMessage(content=content, additional_kwargs=additional_kwargs)
+    elif role == "system":
+        return SystemMessage(content=_dict["content"])
+    elif role == "function":
+        return FunctionMessage(content=_dict["content"], name=_dict["name"])
+    else:
+        return ChatMessage(content=_dict["content"], role=role)
 
 class ChatModel(object):
     def __init__(self, model_name='gpt-3.5-turbo', **kwargs):
@@ -14,12 +34,12 @@ class ChatModel(object):
     def _create_chat_result(self, response: Mapping[str, Any]) -> Dict[str, Any]:
         generations = []
         for res in response["choices"]:
-            message = res["message"]
-            content = message['content'] or ""
-            generations.append(content)
+            message = _convert_dict_to_message(res["message"])
+            gen = ChatGeneration(message=message)
+            generations.append(gen)
         llm_output = {
             "token_usage": response["usage"], 'model_name': self.model_name}
-        return {"llm_output": llm_output, "generations": generations}
+        return ChatResult(generations=generations, llm_output=llm_output)
 
     def __call__(self, messages, stop):
         response = openai.ChatCompletion.create(

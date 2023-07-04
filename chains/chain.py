@@ -1,9 +1,9 @@
 
 from typing import Any, Dict, List, Optional, Union
-from callback.base import CallbackHandler
+from callbacks.custom import CallbackHandler
 from models.chat_model import ChatModel
-from schema.agent import NoOpOutputParser
-from utils.dotdict import dotdict
+from schema.output import LLMResult
+from schema.output_parser import NoOpOutputParser
 
 default_callback = CallbackHandler()
 
@@ -27,6 +27,11 @@ class Chain(object):
         missing_keys = set(self.input_keys).difference(inputs)
         if missing_keys:
             raise ValueError(f"Missing some input keys: {missing_keys}")
+        
+    def _validate_outputs(self, outputs: Dict[str, Any]) -> None:
+        missing_keys = set(self.output_keys).difference(outputs)
+        if missing_keys:
+            raise ValueError(f"Missing some output keys: {missing_keys}")
 
     def prep_inputs(self, inputs: Union[Dict[str, Any], Any]) -> Dict[str, str]:
         """Validate and prep inputs."""
@@ -73,30 +78,49 @@ class Chain(object):
 
     def _create_llm_result(self, response: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Create llm result from response."""
-        llm_output = self._combine_llm_outputs([res['llm_output'] for res in response])
-        generations = [res['generations'] for res in response]
-        llm_result = {"llm_output": llm_output, "generations": generations}
+        llm_output = self._combine_llm_outputs([res.llm_output for res in response])
+        generations = [res.generations for res in response]
+        llm_result = LLMResult(generations=generations, llm_output=llm_output)
         return llm_result
     
+    def prep_outputs(
+        self,
+        inputs: Dict[str, str],
+        outputs: Dict[str, str],
+        return_only_outputs: bool = False,
+    ) -> Dict[str, str]:
+        """Validate and prep outputs."""
+        self._validate_outputs(outputs)
+        if self.memory is not None:
+            self.memory.save_context(inputs, outputs)
+        if return_only_outputs:
+            return outputs
+        else:
+            return {**inputs, **outputs}
+    
     def create_outputs(self, response: List[Dict[str, Any]]):
-        llm_result = self._create_llm_result(response)
-        result = [
+        llm_result: LLMResult = self._create_llm_result(response)
+        results = [
             # Get the text of the top generated string.
             {
-                self.output_key: self.output_parser.parse_result([dotdict({self.output_key: generation})]),
+                self.output_key: self.output_parser.parse_result(generation),
                 "full_generation": generation,
             }
-            for generation in llm_result['generations']
+            for generation in llm_result.generations
         ]
         if self.return_final_only:
-            result = [{self.output_key: r[self.output_key]} for r in result]
-        return result
+            results = [{self.output_key: r[self.output_key]} for r in results]
+        return results
 
     
-    def __call__(self, inputs):
+    def __call__(self, inputs, return_only_outputs: bool = False):
         inputs = self.prep_inputs(inputs)
         responses = self.generate([inputs])
-        return self.create_outputs(responses)[0]
+        outputs = self.create_outputs(responses)
+        final_outputs: Dict[str, Any] = self.prep_outputs(
+            inputs, outputs[0], return_only_outputs
+        )
+        return final_outputs
 
     def generate(
         self,
