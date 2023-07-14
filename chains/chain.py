@@ -4,6 +4,7 @@ from callbacks.custom import CallbackHandler
 from models.chat_model import ChatModel
 from schema.output import LLMResult
 from schema.output_parser import NoOpOutputParser
+from utils.diff_strings import print_clean_diff_strings
 
 default_callback = CallbackHandler()
 
@@ -22,6 +23,7 @@ class Chain(object):
         self.return_final_only = kwargs.get('return_final_only', True)
         self.callback = kwargs.get('callback') or default_callback
         self.print_prompt = kwargs.get('print_prompt', False)
+        self.preprinted_prompt = ''
 
     def _validate_inputs(self, inputs: Dict[str, Any]) -> None:
         """Check that all inputs are present."""
@@ -135,8 +137,12 @@ class Chain(object):
         prompts, stop = self.prep_prompts(input_list)
         if self.print_prompt == True:
             messages = [message['content'] for message in prompts[0]]
-            print(messages[1])
-            print('---'*10+'END'+'---'*10)
+            printed_prompt = '\n'.join(messages)
+            if self.preprinted_prompt != '':
+                print_clean_diff_strings(self.preprinted_prompt, printed_prompt)
+            else:
+                print(printed_prompt)
+            self.preprinted_prompt = printed_prompt
         results = []
         for messages in prompts:
             try:

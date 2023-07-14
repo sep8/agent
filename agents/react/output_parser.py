@@ -2,7 +2,7 @@ import re
 from typing import Union
 from agents.base import AgentOutputParser
 
-from agents.mrkl.prompt import FORMAT_INSTRUCTIONS
+from agents.react.prompt import FORMAT_INSTRUCTIONS
 from schema import AgentAction, AgentFinish, OutputParserException
 
 FINAL_ANSWER_ACTION = "Final Answer:"

@@ -1,7 +1,7 @@
 
 from agents.base import Agent
-from agents.mrkl.output_parser import MRKLOutputParser
-from agents.mrkl.prompt import PREFIX, SUFFIX, FORMAT_INSTRUCTIONS
+from agents.react.output_parser import MRKLOutputParser
+from agents.react.prompt import PREFIX, SUFFIX, FORMAT_INSTRUCTIONS
 from chains.chain import Chain
 from prompts.prompt_template import PromptTemplate
 
