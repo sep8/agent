@@ -4,7 +4,7 @@ from callbacks.custom import CallbackHandler
 from models.chat_model import ChatModel
 from schema.output import LLMResult
 from schema.output_parser import NoOpOutputParser
-from utils.diff_strings import print_clean_diff_strings
+from utils.diff_strings import print_clean_diff_strings, print_diff_strings
 
 default_callback = CallbackHandler()
 
@@ -148,6 +148,8 @@ class Chain(object):
             try:
                 self.callback.on_start(messages)
                 response = self.llm(messages, stop=stop, **kwargs)
+                if self.print_prompt == True:
+                    print(f"\n{response.generations[0].text}\n")
                 self.callback.on_end(response)
                 results.append(response)
             except (KeyboardInterrupt, Exception) as e:
