@@ -15,7 +15,7 @@ class StructuredChatAgent(Agent):
         tools = kwargs.get('tools')
 
         self.prefix = kwargs.get('prefix', PREFIX)
-        human_message_template = HUMAN_MESSAGE_TEMPLATE
+        human_message_template = kwargs.get('human_message_template', HUMAN_MESSAGE_TEMPLATE)
         format_instructions = FORMAT_INSTRUCTIONS
         input_variables = kwargs.get('input_variables', None)
         prompt = self.create_prompt(tools, self.prefix, SUFFIX, human_message_template, format_instructions, input_variables)

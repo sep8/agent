@@ -150,6 +150,9 @@ class Agent(object):
         for action in actions:
             if action.tool in self.name_to_tool_map:
                 tool = self.name_to_tool_map[action.tool]
-                observation = tool.run(action.tool_input)
+                tool_input = action.tool_input
+                if action.tool == 'Wikipedia' and type(tool_input) == dict:
+                    tool_input = tool_input['title']
+                observation = tool.run(tool_input)
                 result.append((action, observation))
         return result

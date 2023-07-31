@@ -1,5 +1,5 @@
 from agents.planner_executors.schema import StepResponse
-from agents.structured_chat import StructuredChatAgent
+from agents.structured_chat.structured_chat import StructuredChatAgent
 
 HUMAN_MESSAGE_TEMPLATE = """Previous steps: {previous_steps}
 

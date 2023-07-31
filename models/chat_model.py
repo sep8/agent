@@ -24,7 +24,7 @@ def _convert_dict_to_message(_dict: Mapping[str, Any]) -> BaseMessage:
         return ChatMessage(content=_dict["content"], role=role)
 
 class ChatModel(object):
-    def __init__(self, model_name='gpt-3.5-turbo-0613', **kwargs):
+    def __init__(self, model_name='gpt-3.5-turbo', **kwargs):
         self.model_name = model_name
         self.temperature = kwargs.get('temperature', 0.0)
         self.max_tokens = kwargs.get('max_tokens', None)

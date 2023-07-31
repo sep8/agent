@@ -139,7 +139,7 @@ class Chain(object):
             messages = [message['content'] for message in prompts[0]]
             printed_prompt = '\n'.join(messages)
             if self.preprinted_prompt != '':
-                print_clean_diff_strings(self.preprinted_prompt, printed_prompt)
+                print_diff_strings(self.preprinted_prompt, printed_prompt)
             else:
                 print(printed_prompt)
             self.preprinted_prompt = printed_prompt
