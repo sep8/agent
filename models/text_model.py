@@ -9,7 +9,6 @@ class TextModel(object):
         self.model_name = model_name
         self.temperature = kwargs.get('temperature', 0.0)
         self.max_tokens = kwargs.get('max_tokens', 300)
-        self.top_p = kwargs.get('top_p', 1.0)
         self.n = kwargs.get('n', 1)
 
     def _create_text_result(self, response: Mapping[str, Any]):
