@@ -27,6 +27,7 @@ class ChatModel(object):
     def __init__(self, model_name='gpt-3.5-turbo', **kwargs):
         self.model_name = model_name
         self.temperature = kwargs.get('temperature', 0.0)
+        self.function_call = kwargs.get('function_call', 'auto')
         self.max_tokens = kwargs.get('max_tokens', None)
         self.top_p = kwargs.get('top_p', 1.0)
         self.n = kwargs.get('n', 1)
@@ -41,10 +42,12 @@ class ChatModel(object):
             "token_usage": response["usage"], 'model_name': self.model_name}
         return ChatResult(generations=generations, llm_output=llm_output)
 
-    def __call__(self, messages, stop=None):
+    def __call__(self, messages, functions, stop=None):
         response = openai.ChatCompletion.create(
             model=self.model_name,
             messages=messages,
+            functions=functions,
+            function_call=self.function_call,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
             n=self.n,
